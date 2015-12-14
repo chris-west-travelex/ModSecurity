@@ -944,7 +944,7 @@ ngx_http_modsecurity_process_request(ngx_http_request_t *r)
      * Changes on standalone should be coordenated with others like IIS, so
      * leaving this dirty hack here.
      */
-    if (r->method == NGX_HTTP_POST &&
+    if ((r->method == NGX_HTTP_POST || r->method == NGX_HTTP_PUT) &&
         modsecIsRequestBodyAccessEnabled(ctx->req) &&
         modsecContextState(ctx->req) != MODSEC_DISABLED) {
 
