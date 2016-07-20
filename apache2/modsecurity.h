@@ -268,6 +268,7 @@ struct modsec_rec {
     unsigned int         phase_request_body_complete;
 
     apr_bucket_brigade  *if_brigade;
+    unsigned int         if_seen_eos;
     unsigned int         if_status;
     unsigned int         if_started_forwarding;
 
@@ -517,6 +518,11 @@ struct directory_config {
 
     /* AUDITLOG_SERIAL (single file) or AUDITLOG_CONCURRENT (multiple files) */
     int                  auditlog_type;
+
+#ifdef WITH_YAJL
+    /* AUDITLOGFORMAT_NATIVE or AUDITLOGFORMAT_JSON */
+    int                  auditlog_format;
+#endif
 
     /* Mode for audit log directories and files */
     apr_fileperms_t      auditlog_dirperms;

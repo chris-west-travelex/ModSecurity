@@ -73,6 +73,9 @@ void *create_directory_config(apr_pool_t *mp, char *path)
     /* audit log variables */
     dcfg->auditlog_flag = NOT_SET;
     dcfg->auditlog_type = NOT_SET;
+    #ifdef WITH_YAJL
+    dcfg->auditlog_format = NOT_SET;
+    #endif
     dcfg->max_rule_time = NOT_SET;
     dcfg->auditlog_dirperms = NOT_SET;
     dcfg->auditlog_fileperms = NOT_SET;
@@ -503,6 +506,10 @@ void *merge_directory_configs(apr_pool_t *mp, void *_parent, void *_child)
         merged->auditlog2_fd = parent->auditlog2_fd;
         merged->auditlog2_name = parent->auditlog2_name;
     }
+    #ifdef WITH_YAJL
+    merged->auditlog_format = (child->auditlog_format == NOT_SET
+        ? parent->auditlog_format : child->auditlog_format);
+    #endif
     merged->auditlog_storage_dir = (child->auditlog_storage_dir == NOT_SET_P
         ? parent->auditlog_storage_dir : child->auditlog_storage_dir);
     merged->auditlog_parts = (child->auditlog_parts == NOT_SET_P
@@ -667,6 +674,9 @@ void init_directory_config(directory_config *dcfg)
     /* audit log variables */
     if (dcfg->auditlog_flag == NOT_SET) dcfg->auditlog_flag = 0;
     if (dcfg->auditlog_type == NOT_SET) dcfg->auditlog_type = AUDITLOG_SERIAL;
+    #ifdef WITH_YAJL
+    if (dcfg->auditlog_format == NOT_SET) dcfg->auditlog_format = AUDITLOGFORMAT_NATIVE;
+    #endif
     if (dcfg->max_rule_time == NOT_SET) dcfg->max_rule_time = 0;
     if (dcfg->auditlog_dirperms == NOT_SET) dcfg->auditlog_dirperms = CREATEMODE_DIR;
     if (dcfg->auditlog_fileperms == NOT_SET) dcfg->auditlog_fileperms = CREATEMODE;
@@ -755,6 +765,9 @@ static const char *add_rule(cmd_parms *cmd, directory_config *dcfg, int type,
     char *rid = NULL;
     msre_rule *rule = NULL;
     extern msc_engine *modsecurity;
+    int type_with_lua = 1;
+    int type_rule;
+    int rule_actionset;
     int offset = 0;
 
     #ifdef DEBUG_CONF
@@ -787,25 +800,25 @@ static const char *add_rule(cmd_parms *cmd, directory_config *dcfg, int type,
     }
 
     /* Rules must have uniq ID */
-    if (
+    type_rule = (dcfg->tmp_chain_starter == NULL);
 #if defined(WITH_LUA)
-            type != RULE_TYPE_LUA &&
+            type_rule = (type != RULE_TYPE_LUA && type_rule);
 #endif
-            (dcfg->tmp_chain_starter == NULL))
+            if (type_rule)
                 if(rule->actionset == NULL)
                     return "ModSecurity: Rules must have at least id action";
 
     if(rule->actionset != NULL && (dcfg->tmp_chain_starter == NULL))    {
-        if(rule->actionset->id == NOT_SET_P
+        rule_actionset = (rule->actionset->id == NOT_SET_P);
 #if defined(WITH_LUA)
-            && (type != RULE_TYPE_LUA)
+        rule_actionset = (rule_actionset && (type != RULE_TYPE_LUA));
 #endif
-          )
-            return "ModSecurity: No action id present within the rule";
+        if (rule_actionset)
+          return "ModSecurity: No action id present within the rule";
 #if defined(WITH_LUA)
-        if(type != RULE_TYPE_LUA)
+        type_with_lua = (type != RULE_TYPE_LUA);
 #endif
-        {
+        if (type_with_lua){
             rid = apr_hash_get(dcfg->rule_id_htab, rule->actionset->id, APR_HASH_KEY_STRING);
             if(rid != NULL) {
                 return "ModSecurity: Found another rule with the same id";
@@ -1189,10 +1202,13 @@ static const char *cmd_audit_log(cmd_parms *cmd, void *_dcfg, const char *p1)
     else {
         const char *file_name = ap_server_root_relative(cmd->pool, dcfg->auditlog_name);
         apr_status_t rc;
-
+        
+        if (dcfg->auditlog_fileperms == NOT_SET) {
+            dcfg->auditlog_fileperms = CREATEMODE;
+        }
         rc = apr_file_open(&dcfg->auditlog_fd, file_name,
                 APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
-                CREATEMODE, cmd->pool);
+                dcfg->auditlog_fileperms, cmd->pool);
 
         if (rc != APR_SUCCESS) {
             return apr_psprintf(cmd->pool, "ModSecurity: Failed to open the audit log file: %s",
@@ -1228,9 +1244,12 @@ static const char *cmd_audit_log2(cmd_parms *cmd, void *_dcfg, const char *p1)
         const char *file_name = ap_server_root_relative(cmd->pool, dcfg->auditlog2_name);
         apr_status_t rc;
 
+        if (dcfg->auditlog_fileperms == NOT_SET) {
+            dcfg->auditlog_fileperms = CREATEMODE;
+        }
         rc = apr_file_open(&dcfg->auditlog2_fd, file_name,
                 APR_WRITE | APR_APPEND | APR_CREATE | APR_BINARY,
-                CREATEMODE, cmd->pool);
+                dcfg->auditlog_fileperms, cmd->pool);
 
         if (rc != APR_SUCCESS) {
             return apr_psprintf(cmd->pool, "ModSecurity: Failed to open the secondary audit log file: %s",
@@ -1281,6 +1300,23 @@ static const char *cmd_audit_log_type(cmd_parms *cmd, void *_dcfg,
 
     return NULL;
 }
+
+#ifdef WITH_YAJL
+static const char *cmd_audit_log_mode(cmd_parms *cmd, void *_dcfg,
+        const char *p1)
+{
+    directory_config *dcfg = _dcfg;
+
+    if (strcasecmp(p1, "JSON") == 0) dcfg->auditlog_format = AUDITLOGFORMAT_JSON;
+    else
+        if (strcasecmp(p1, "Native") == 0) dcfg->auditlog_format = AUDITLOGFORMAT_NATIVE;
+        else
+            return (const char *)apr_psprintf(cmd->pool,
+                    "ModSecurity: Unrecognised parameter value for SecAuditLogFormat: %s", p1);
+
+    return NULL;
+}
+#endif
 
 static const char *cmd_audit_log_dirmode(cmd_parms *cmd, void *_dcfg,
         const char *p1)
@@ -1666,7 +1702,7 @@ static const char *cmd_rule_perf_time(cmd_parms *cmd, void *_dcfg,
 }
 
 char *parser_conn_limits_operator(apr_pool_t *mp, const char *p2,
-    TreeRoot **whitelist, TreeRoot **suspicious_list, 
+    TreeRoot **whitelist, TreeRoot **suspicious_list,
     const char *filename)
 {
     int res = 0;
@@ -1753,7 +1789,7 @@ static const char *cmd_conn_read_state_limit(cmd_parms *cmd, void *_dcfg,
         if (param)
             return param;
     }
-    
+
     conn_read_state_limit = limit;
 
     return NULL;
@@ -3222,6 +3258,16 @@ const command_rec module_directives[] = {
         CMD_SCOPE_ANY,
         "whether to use the old audit log format (Serial) or new (Concurrent)"
     ),
+
+#ifdef WITH_YAJL
+    AP_INIT_TAKE1 (
+        "SecAuditLogFormat",
+        cmd_audit_log_mode,
+        NULL,
+        CMD_SCOPE_ANY,
+        "whether to emit audit log data in native format or JSON"
+    ),
+#endif
 
     AP_INIT_TAKE1 (
         "SecAuditLogStorageDir",

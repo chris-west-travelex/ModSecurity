@@ -1030,6 +1030,13 @@ static int hook_request_late(request_rec *r) {
                 r->connection->keepalive = AP_CONN_CLOSE;
                 return HTTP_BAD_REQUEST;
                 break;
+            case -7 : /* Partial recieved */
+                if (my_error_msg != NULL) {
+                    msr_log(msr, 4, "%s", my_error_msg);
+                }
+                r->connection->keepalive = AP_CONN_CLOSE;
+                return HTTP_BAD_REQUEST;
+                break;
             default :
                 /* allow through */
                 break;
@@ -1086,6 +1093,7 @@ static void hook_error_log(const char *file, int line, int level, apr_status_t s
 {
     modsec_rec *msr = NULL;
     error_message_t *em = NULL;
+    int msr_ap_server;
 
 #if AP_SERVER_MAJORVERSION_NUMBER > 1 && AP_SERVER_MINORVERSION_NUMBER > 2
     if (info == NULL) return;
@@ -1102,15 +1110,15 @@ static void hook_error_log(const char *file, int line, int level, apr_status_t s
 
     /* Create a context for requests we never had the chance to process */
 #if AP_SERVER_MAJORVERSION_NUMBER > 1 && AP_SERVER_MINORVERSION_NUMBER > 2
-    if ((msr == NULL)
+    msr_ap_server = ((msr == NULL)
         && ((info->level & APLOG_LEVELMASK) < APLOG_DEBUG)
-        && apr_table_get(info->r->subprocess_env, "UNIQUE_ID"))
+        && apr_table_get(info->r->subprocess_env, "UNIQUE_ID"));
 #else
-    if ((msr == NULL)
+    msr_ap_server = ((msr == NULL)
         && ((level & APLOG_LEVELMASK) < APLOG_DEBUG)
-        && apr_table_get(r->subprocess_env, "UNIQUE_ID"))
+        && apr_table_get(r->subprocess_env, "UNIQUE_ID"));
 #endif
-    {
+    if (msr_ap_server) {
 #if AP_SERVER_MAJORVERSION_NUMBER > 1 && AP_SERVER_MINORVERSION_NUMBER > 2
         msr = create_tx_context((request_rec *)info->r);
 #else
@@ -1484,7 +1492,7 @@ static int hook_connection_early(conn_rec *conn)
                    conn_read_state_suspicious_list, client_ip, NULL, &error_msg) <= 0))
             {
                 if (conn_limits_filter_state == MODSEC_DETECTION_ONLY)
-                    ap_log_error(APLOG_MARK, APLOG_WARNING, 0, NULL, 
+                    ap_log_error(APLOG_MARK, APLOG_WARNING, 0, NULL,
                         "ModSecurity: Too many threads [%ld] of %ld allowed " \
                         "in READ state from %s - There is a suspission list " \
                         "but that IP is not part of it, access granted",

@@ -7,7 +7,7 @@
     lightArgs: 
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi" xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
-    <Product Id="22B04FDB-9BAB-46B0-87B8-A39544ECECD3" Name="ModSecurity IIS" Language="1033" Version="2.9.0" Manufacturer="ModSecurity" UpgradeCode="82F09489-1678-4C38-ADCB-08C3757653DB">
+    <Product Id="22B04FDB-9BAB-46B0-87B8-A39544ECECD3" Name="ModSecurity IIS" Language="1033" Version="2.9.1" Manufacturer="ModSecurity" UpgradeCode="82F09489-1678-4C38-ADCB-08C3757653DB">
         <Package Description="ModSecurityISS" Comments="none" InstallerVersion="405" Compressed="yes" InstallPrivileges="elevated" InstallScope="perMachine" />
         <?define ProductName = "ModSecuirty IIS" ?>
         <?if $(sys.BUILDARCH) = x64 ?>
@@ -91,7 +91,7 @@
             <RegistrySearch Id="FindInetPubFolder" Root="HKLM" Key="SOFTWARE\Microsoft\InetStp" Name="PathWWWRoot" Type="directory" />
         </Property>
         <Property Id="MSIUSEREALADMINDETECTION" Value="1" />
-        <Condition Message="This setup requires IIS 7.0 or 8.0."><![CDATA[(IIS="#7") OR (IIS="#8")]]></Condition>
+        <Condition Message="This setup requires IIS 7.0 or 8.0."><![CDATA[(IIS="#7") OR (IIS="#8") OR (IIS="#10")]]></Condition>
         <!-- Version 2.7.5 had an uninstall issue that leaves some files behind. Asking the user to manually hash this out. -->
         <Condition Message="A older version of ModSecurityIIS was found in your computer. Please complete uninstall by removing the following file: [FILEEXISTS]. You may have to remove ModSecurity module from IIS, use the IIS Manager to do so."><![CDATA[(NOT FILEEXISTS) OR (Installed)]]></Condition>
         <Condition Message="64-bit operating system was detected, please use the 64-bit installer.">
